@@ -2,7 +2,7 @@
 
 更新：2026-10-14。按最新要求，将原分级矩阵收敛为两类测试：**①性能与正确性验证；②最大并行度测试及算子执行效果分析。** 环境检查合并到作业启动，不再逐级进行 1/2/4/8/16 节点验收；故障注入、恢复、两小时长稳和全功能组合不作为本轮必测项。
 
-本文为设计，尚未执行集群测试。现有 TP/DDP 训练与保存分析代码可复用；正式数值对照、性能计时、profiler、启动与汇总工具现已实现，运行命令见 [README.md](README.md#两类多机验收新增入口)。历史工具会话 socket 受限，实际作业应在允许通信的集群环境启动。
+本文为设计，尚未执行集群测试。现有 TP/DDP 训练与保存分析代码可复用；正式数值对照、性能计时、profiler、启动与汇总工具现已实现，运行入口见 [README.md](README.md#多机验收)。实际作业应在允许通信的集群环境启动。
 
 ## 1. 两类测试的最小安排
 
@@ -149,10 +149,10 @@ runs/cluster_acceptance/<run_id>/
 - `tools/aggregate_acceptance.py`：检查 rank 完整性、数值项、参考/trace 校验和，输出性能与算子分析。
 - `configs/acceptance_cluster.example.json`：待填写真实 hostname、网卡和 master IP；不猜测节点补零格式。
 
-本地两类端到端自检已生成 `runs/acceptance_local_v1/` 下报告与 CPU trace，状态均为 `LOCAL_ONLY`。新增 5 项验收工具测试中 4 项通过，1 项真实四进程 Gloo 测试因 socket 权限跳过；连同原有测试累计 44 项，42 通过、2 跳过。现有证据不表示真实两机或 16 节点验收完成。
+本地工具测试和本机真实 Gloo 测试已通过；两机与 16 节点验收仍需在目标集群执行。中间报告和 CPU trace 不随源码保存。
 
-实施时采用一次独立短探测加一次正式作业；自动回退按偶数减半，不自动二分穷举所有规模。严格 NUMA membind、硬件带宽计数器和原生调度器资源申请未实现；可在调度器已分配节点内使用逐节点入口。正式性能数据采用 SGD 更新，与数值测试相同，报告 optimizer 名称。参考生成、文件 I/O 与 profiler 开销均不纳入正式吞吐。
+实施时采用一次独立短探测加一次正式作业；自动回退按偶数减半，不自动二分穷举所有规模。严格 NUMA membind 和硬件带宽计数器未实现；可在调度器已分配节点内使用逐节点入口。正式性能数据采用 SGD 更新，与数值测试相同，报告 optimizer 名称。参考生成、文件 I/O 与 profiler 开销均不纳入正式吞吐。
 
 ## 7. jsub 提交路径
 
-新增登录节点入口 `scripts/submit_acceptance_jsub.sh`，通过 `tools/jsub_acceptance.py` 提交两项依赖作业，申请 192/1536 CPU slots。节点内启动采用调度器 `jexec`，不依赖普通 SSH。执行前校验 JH_HOSTS 与 inventory 的 scheduler_host 一致；controller 心跳失效后远端 guard 停止计算。命令和运行约束见 README 的“通过景行 jsub 提交”章节。当前提交尝试受会话 socket 权限阻止，尚无真实作业号。
+新增登录节点入口 `scripts/submit_acceptance_jsub.sh`，通过 `tools/jsub_acceptance.py` 提交两项依赖作业，申请 192/1536 CPU slots。节点内启动采用调度器 `jexec`，不依赖普通 SSH。执行前校验 JH_HOSTS 与 inventory 的 scheduler_host 一致；controller 心跳失效后远端 guard 停止计算。运行前须核对 README 的“多机验收”说明与现场调度资源；目前尚无真实集群作业号。

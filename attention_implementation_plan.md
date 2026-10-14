@@ -1,12 +1,12 @@
 # CPU Attention 实施方案
 
-本文根据当前目录的 `attention_requirement.txt` 及后续需求调整制定，最近更新日期为 2026-10-14。最新范围调整为：不要求完全对齐昇腾场景，暂不考虑昇腾融合算子；原需求文件中的严格昇腾对齐要求以此调整为准。
+本文根据项目需求及后续范围调整制定，最近更新日期为 2026-10-14。当前不要求完全对齐昇腾场景，暂不考虑昇腾融合算子。
 
-推荐路线：使用现有 `pytorch_py311` 环境，通过标准 PyTorch CPU 运算实现完整 Attention，以独立数学基准验证前反向正确性，通过 Gloo 实现 TP 和 DP，并提供结果保存、重放和误差分析工具。MindSpeed-LLM 的通用 Attention 和并行结构可作为设计参考，后续按需增加接口或配置兼容。
+推荐路线：使用 Python 3.11、PyTorch 和 NumPy，通过标准 PyTorch CPU 运算实现完整 Attention，以独立数学基准验证前反向正确性，通过 Gloo 实现 TP 和 DP，并提供结果保存、重放和误差分析工具。MindSpeed-LLM 的通用 Attention 和并行结构可作为设计参考，后续按需增加接口或配置兼容。
 
-本文是实施方案及阶段状态记录。阶段①至③已落地；阶段④ TP/DDP 代码、训练和分片恢复已交付，但实际 Gloo/DDP 多进程测试受 socket 权限限制，尚未验收。阶段⑤已形成面向 16 个 CPU 节点的[两类验收方案](multi_node_acceptance_plan.md)，验收工具已交付，真实集群验收待执行；阶段⑥性能优化仍未完成，运行方式见 `README.md`。
+本文是实施方案及阶段状态记录。阶段①至③已落地；阶段④ TP/DDP 代码、训练和分片恢复已交付，本机真实 Gloo/DDP 测试已通过。阶段⑤已形成面向 16 个 CPU 节点的[两类验收方案](multi_node_acceptance_plan.md)，验收工具已交付，真实集群验收待执行；阶段⑥性能优化仍未完成，运行方式见 `README.md`。
 
-当前累计 44 项测试（基础计算 19 项、保存分析 12 项、并行 8 项、验收工具 5 项），42 项通过，2 项真实 Gloo 测试因环境跳过。单进程完整记录的 34 个前反向张量零容差重放仍作为阶段③证据；新增并行证据严格区分线程模拟的代数验证与实际网络通信验收。
+验证流程区分独立数学基准、进程内并行代数测试、本机真实 Gloo 通信和跨机验收；前三项已具备可运行入口，跨机验收仍需在目标集群执行。
 
 ## 1. 需求与交付范围
 
@@ -55,7 +55,7 @@ PermissionError: [Errno 1] Operation not permitted
 
 首版以标准缩放点积 Attention 为计算规格，明确定义张量布局、权重布局、缩放、mask、位置处理、dropout 和精度。实现使用普通 PyTorch CPU 运算，不依赖 MindSpeed-LLM、torch_npu 或 CANN，不实现昇腾融合算子的接口、返回值或硬件特定行为。
 
-已固定 `configs/attention_spec.json`，并通过 `tools/generate_reference.py` 生成 `runs/reference/reference_manifest.json`，包含：
+已固定 `configs/attention_spec.json`；`tools/generate_reference.py` 可以生成包含下列内容的基准清单：
 
 - 本项目版本、Python/PyTorch/NumPy 版本和 CPU 运行信息。
 - 标准参考实现的来源、版本和运行方式。
@@ -197,7 +197,7 @@ DDP 仅覆盖对应 DP 组。loss 归一化、梯度平均与梯度累积共同�
 
 ### 5.4 阶段④验证状态
 
-[并行验证报告](runs/parallel_validation/report.json) 记录并行测试 8 项中 7 项通过、1 项真实 Gloo/DDP 测试因 socket 权限跳过，`stage4_fully_validated=false`。
+本机真实 Gloo/DDP 测试已通过；跨机训练与目标集群资源验收仍需单独执行。
 
 已验证：`(TP,DP)=(2,1),(1,2),(2,2)` 的输出、dInput、参数梯度、一次 SGD 更新、不等有效 token 数及梯度累积；另覆盖 FP32/SBE/无 bias、可微 head bias、仅捕获一个 TP rank、分片重建和局部重放。这些多 rank 算法测试使用测试代码中的进程内线程 SUM，不是 Gloo 或生产通信后端。
 
@@ -207,15 +207,15 @@ DDP 仅覆盖对应 DP 组。loss 归一化、梯度平均与梯度累积共同�
 python -m tools.verify_parallel --require-gloo --output runs/parallel_validation_new/report.json
 ```
 
-退出码 0 表示全部通过，1 表示测试失败，2 表示因环境跳过实际 Gloo 验收。当前严格执行结果为 2，不能将阶段④标记为验收完成。
+退出码 0 表示全部通过，1 表示测试失败，2 表示因环境跳过实际 Gloo 验收。
 
-还已实际运行无通信的单 rank 并行训练路径：全局 batch 5、累积 2 次、变长样本、dropout/RoPE，完成四步并从 schema-v2 恢复到六步。证据为 [训练报告](runs/parallel_single_rank/training_report.json)、[恢复报告](runs/parallel_single_rank_resumed/training_report.json) 及 [局部重放报告](runs/parallel_single_rank/replay_report.json)。这验证了新训练入口和恢复流程，不代表多 rank 已通过。
+单 rank 并行训练路径还覆盖全局 batch、梯度累积、变长样本、dropout/RoPE 和 schema-v2 恢复；它与真实多 rank 通信验收分别检查。
 
 ## 6. 多机启动与 CPU 配置
 
 采用 Gloo 和 `torchrun`，配置节点数、节点编号、主节点地址、端口及通信网卡。[PyTorch 分布式文档](https://docs.pytorch.org/docs/2.14/distributed.html)
 
-以下为已交付训练入口的两机启动配置，每机两个进程，总计 `TP=2, DP=2`。代码已支持这些参数，但当前环境不能运行 socket，因此此配置尚未经过真实两机验收；需在允许 Gloo 互通、代码/环境一致且输出目录共享的机器上执行。
+以下为已交付训练入口的两机启动配置，每机两个进程，总计 `TP=2, DP=2`。本机 Gloo 测试已通过，但此配置尚未经过真实两机验收；需在允许 Gloo 互通、代码/环境一致且输出目录共享的机器上执行。
 
 主节点：
 
@@ -310,10 +310,10 @@ Python 中的调用顺序为：创建 writer → 进入 `writer.record(...)` 上
 
 ### 7.5 保存、分析与重放的复现命令
 
-以下命令在项目根目录、`pytorch_py311` 环境中执行。保存示例使用新的输出目录，避免与已有记录冲突。
+以下命令在项目根目录、具备 PyTorch 与 NumPy 的环境中执行。保存示例使用新的输出目录，避免与已有记录冲突。
 
 ```bash
-conda activate pytorch_py311
+conda activate cpu_tp
 
 python -m attention_cpu.train \
   --config configs/capture_demo.json \
@@ -339,20 +339,11 @@ python -m tools.compare_results \
 
 离线分片重建命令为 `python -m tools.reconstruct_results <记录目录1> <记录目录2> --output runs/reconstructed.pt`。各记录应保存相同张量名称，并具有一致的 step、layer、梯度阶段、模块类型及训练模式；元数据中须提供正确的 `global_shape`、`axis` 和 `indices`，或将完整副本标为 `replicated`。工具不推断缺失分片，不执行 collective 或部分和归约。
 
-### 7.6 实际报告与验收范围
+### 7.6 验收范围
 
-| 检查 | 已有结果与证据 |
-| --- | --- |
-| 捕获训练 | [训练报告](runs/capture_demo/training_report.json)：含 dropout/RoPE 的四步训练，仅保存第 1、3 步 |
-| 单份统计 | [分析报告](runs/capture_demo/analysis_report.json)：34 个前反向张量，未发现 NaN |
-| 独立重放 | [重放报告](runs/capture_demo/captures/demo/step_1/layer_0/rank_0/replay_report.json)：34 项全部通过，`atol=0, rtol=0` |
-| 原记录与重放比较 | [比较报告](runs/capture_demo/comparison_report.json)：34 项全部通过，最大绝对误差均为 0，无首个偏差 |
-| 完整副本重建 | [重建统计](runs/capture_demo/reconstructed.json)：CLI 已运行并生成 34 个张量；索引分片使用单元测试验证 |
-| 保存行为 | `tests/test_capture.py` 验证保存开关不改变训练 loss、参数及 RNG；同时覆盖筛选、文件损坏、NaN/Inf、缺失项、冻结参数和梯度累积 |
+`tests/test_capture.py` 检查保存开关不改变训练 loss、参数及 RNG，并覆盖筛选、文件损坏、NaN/Inf、缺失项、冻结参数和梯度累积。分析、重放、比较与重建工具可按本节命令生成新报告。
 
-比较仅覆盖两侧实际保存的张量，选定项通过不代表未保存项也通过。相同符号的无穷允许相等，NaN 判为不一致；离散类型精确比较。不同梯度通信阶段不能直接混比。零容差重放是当前相同运行环境下的实测结果，跨版本或跨机器时按固定精度门槛验收。
-
-这些报告与张量位于 `.gitignore` 中的 `runs/` 下，可使用上述命令在新目录重新生成。TP/DP 代码现已交付，真实 Gloo/DDP 多进程和跨机训练仍未验收。
+比较仅覆盖两侧实际保存的张量，选定项通过不代表未保存项也通过。相同符号的无穷允许相等，NaN 判为不一致；离散类型精确比较。不同梯度通信阶段不能直接混比。跨版本或跨机器时按固定精度门槛验收。
 
 ### 7.7 并行记录的离线重放
 
@@ -360,7 +351,7 @@ python -m tools.compare_results \
 
 该工具明确排除 `post_dp.*`，因为局部调用和上游梯度不足以重放 DDP 的累积平均。这些张量的验收必须由真实多进程测试或全体 DP 样本基准完成。缺失 TP peers、混入不同 DP 样本或不一致的复制输入会报错。
 
-`runs/parallel_validation/report.json` 中的 `offline_equivalence`、`offline_replay` 和 `offline_captures/` 提供带 `in_process_test_simulation` 标记的模拟证据；它们不会改变报告中 `actual_gloo_status=blocked_by_environment` 的状态。
+离线并行测试使用 `in_process_test_simulation` 标记，与实际 Gloo 通信验证分别报告。
 
 ## 8. 验证与验收标准
 
@@ -427,7 +418,6 @@ configs/
 scripts/
     train_parallel_local.sh
 README.md
-attention_requirement.txt
 attention_implementation_plan.md
 ```
 
@@ -440,19 +430,17 @@ attention_implementation_plan.md
 | 阶段 | 交付物 | 完成标准 | 当前状态 |
 | --- | --- | --- | --- |
 | ① 固定规格与基准 | 标准 Attention 配置、版本清单、CPU 基准生成和验证工具 | 计算语义明确，独立参考可重现 | 已完成，六组基准已生成并验证 |
-| ② 单进程实现 | Attention 核心、完整模块、训练示例、单进程 checkpoint | 前反向、独立基准和梯度检查通过 | 已完成，19 项测试及训练/恢复示例通过 |
-| ③ 保存与分析 | dump、筛选、统计、重放、比较和离线分片重建工具 | 能重现结果并定位中间张量及梯度偏差 | 已完成；新增 12 项测试，累计 31 项通过；实际 34 个张量零容差重放一致 |
-| ④ TP＋DP | Gloo 组、可微 TP、DDP、累积、保存与分片恢复 | 实际并行结果与单进程训练等价 | 代码已交付；并行 8 项测试中 7 通过、真实 Gloo 1 项跳过；未验收完成 |
+| ② 单进程实现 | Attention 核心、完整模块、训练示例、单进程 checkpoint | 前反向、独立基准和梯度检查通过 | 已完成 |
+| ③ 保存与分析 | dump、筛选、统计、重放、比较和离线分片重建工具 | 能重现结果并定位中间张量及梯度偏差 | 已完成 |
+| ④ TP＋DP | Gloo 组、可微 TP、DDP、累积、保存与分片恢复 | 实际并行结果与单进程训练等价 | 代码已交付，本机真实 Gloo 测试已通过；跨机验收待执行 |
 | ⑤ 多机验收 | 两类验收方案、数值/性能报告、最大并行度算子分析 | 性能与正确性通过；全部 16 节点达到最大实测并行度并完成算子分析 | 两类验收入口、CPU 绑定、profiler 和汇总已交付；本地自检通过，真实集群实测待执行 |
 | ⑥ 性能优化 | 线程及 NUMA 调优、性能报告；可选 CPU SDPA 路径 | 优化后重新通过相关数值验收 | 待实现 |
 
-本机实际结果：FP32 输出相对 NumPy FP64 基准的最大绝对误差约 `1.15e-7`；默认配置 30 步训练 loss 从 `0.232556` 降至 `0.004211`，checkpoint 已成功恢复至 35 步。包含 dropout 和 RoPE 的独立测试确认分段恢复与连续训练结果一致。详细运行入口与报告路径见 `README.md`。
+运行入口见 `README.md`。单进程训练恢复、捕获重放与本机并行验证均可重新生成报告；历史结果文件不作为源码保存。
 
-阶段③实际示例位于 `runs/capture_demo/`：包含 dropout/RoPE 的四步训练保存第 1、3 步；分析、独立重放、比较及副本重建均已运行。测试同时验证保存开关不改变训练的 loss、参数与 RNG 状态。真实多机和 TP/DP 状态不因离线分片测试而改变。
+阶段④后续跨机验收工作：
 
-阶段④剩余验收工作：
-
-1. 在具备 socket 权限的环境运行严格命令，取得实际 Gloo/DDP 三个拓扑的通过报告。
+1. 在目标集群运行严格命令，取得跨机 Gloo/DDP 三个拓扑的通过报告。
 2. 确认真实通信下的输出、输入/参数梯度、更新、累积及分片恢复与参考一致，并检查 `post_dp` 记录。
 3. 阶段⑤按最新要求仅进行性能与正确性验证，以及 16 节点最大并行度测试并分析算子执行效果；不再要求逐级节点扩展、故障注入或长稳矩阵。
 
@@ -472,4 +460,4 @@ attention_implementation_plan.md
 
 详细设计见 [multi_node_acceptance_plan.md](multi_node_acceptance_plan.md)。本轮只做两类：① 单进程参考与两机四进程的性能/正确性验证，覆盖 TP4/DP1 和 TP2/DP2；② 直接使用全部 16 节点，探测最大有效 worker 数并做算子执行效果分析。按每节点 96 个物理核，目标上界为 1536 worker（TP32/DP48、每 worker 一个计算线程），实际值由 cpuset、内存、Gloo 线程/连接及进程限制决定。
 
-第二类只在最高实测规模做正式计时和短 profiler 采集，分析矩阵乘法、softmax、RoPE、数据搬运、反向、TP/DP 通信及 CPU/内存表现。取消原 L0～L7 分级矩阵；故障恢复和两小时长稳不作为本轮门槛。三份 `configs/acceptance_*.json` 继续使用。本节与新验收文档优先于前文一般性测试建议；当前已交付实现与本地端到端自检，报告位于 `runs/acceptance_local_v1/`；状态为 LOCAL_ONLY，尚无真实集群通过证据。
+第二类只在最高实测规模做正式计时和短 profiler 采集，分析矩阵乘法、softmax、RoPE、数据搬运、反向、TP/DP 通信及 CPU/内存表现。取消原 L0～L7 分级矩阵；故障恢复和两小时长稳不作为本轮门槛。三份 `configs/acceptance_*.json` 继续使用。本节与新验收文档优先于前文一般性测试建议；真实集群实测仍待执行。

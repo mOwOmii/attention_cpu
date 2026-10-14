@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Activate pytorch_py311 first. Override GLOO_SOCKET_IFNAME for a non-loopback interface.
+# Activate an environment with PyTorch and NumPy first. Override GLOO_SOCKET_IFNAME for a non-loopback interface.
 export GLOO_SOCKET_IFNAME="${GLOO_SOCKET_IFNAME:-lo}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"

@@ -1,4 +1,0 @@
-1. Attention实现必须为 CPU 版本。
-2. Attention的实现与昇腾卡MindSpeed-LLM框架下的Attention实现一致，保证结果一致。
-3. 支持跨机多CPU训练，先支持TP和DP两种并行方式，实现多个CPU之间的对应通信。
-4. 支持前反向运算结果的保存和分析。
