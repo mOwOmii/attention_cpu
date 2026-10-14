@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scope": "single-process CPU MHA",
+  "required_dtypes": ["float32", "float64"],
+  "module_layout": "BSE by default; optional SBE",
+  "core_layout": "B,H,S,D",
+  "weights": "[out,in]; merged QKV consists of complete Q, K, V segments",
+  "head_mapping": "contiguous head blocks within each Q/K/V segment",
+  "formula": "L=scale*(Q@K^T)+positional_bias+float_mask; P=safe_softmax(L); C=dropout(P)@V",
+  "default_scale": "1/sqrt(head_dim)",
+  "boolean_mask": "True=blocked; broadcastable to B,H,Sq,Skv",
+  "float_mask": "input dtype; additive; -inf allowed; NaN/+inf rejected",
+  "padding_mask": "boolean B,Skv; True=blocked key",
+  "causal_mask": "upper-left alignment: block key_index > query_index",
+  "empty_row": "zero probability/context and core gradient; output projection bias may remain",
+  "positional_bias": "finite input-dtype additive bias applied after scaling",
+  "rope": "optional adjacent even/odd pair rotation, theta=position/base^(2*pair/rotary_dim)",
+  "position_ids": "nonnegative integer S or B,S; defaults to arange(S)",
+  "rotary_dim": "positive even integer <= head_dim; suffix unchanged",
+  "dropout": "attention probabilities only; p in [0,1); inverted scaling; disabled in eval",
+  "fixed_dropout_mask": "boolean True=keep; only accepted in training with p>0",
+  "compute_dtype": "same as input and parameter dtype",
+  "softmax_dtype": "same as input by default; optional float32/float64; probabilities cast to input dtype",
+  "reference_compute_dtype": "NumPy float64",
+  "tolerances": {
+    "float32": {"atol": 0.00001, "rtol": 0.0001},
+    "float64": {"atol": 1e-10, "rtol": 1e-8}
+  },
+  "deferred": ["TP/DP", "GQA/MQA", "BF16/FP16", "fused attention", "general capture/analysis tools"]
+}

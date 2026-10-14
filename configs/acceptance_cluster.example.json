@@ -1,0 +1,71 @@
+{
+  "python": "/share/home/renhj/miniconda3/envs/pytorch_py311/bin/python",
+  "workspace": "/share/home/renhj/attention_cpu",
+  "master_addr": "REPLACE_MASTER_IP",
+  "nodes": [
+    {
+      "host": "REPLACE_HOST_01",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_02",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_03",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_04",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_05",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_06",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_07",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_08",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_09",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_10",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_11",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_12",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_13",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_14",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_15",
+      "interface": "REPLACE_INTERFACE"
+    },
+    {
+      "host": "REPLACE_HOST_16",
+      "interface": "REPLACE_INTERFACE"
+    }
+  ]
+}

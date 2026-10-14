@@ -1,0 +1,103 @@
+{
+  "python": "/share/home/renhj/miniconda3/envs/pytorch_py311/bin/python",
+  "workspace": "/share/home/renhj/attention_cpu",
+  "master_addr": "10.10.11.22",
+  "nodes": [
+    {
+      "host": "cpui01-2",
+      "ip": "10.10.11.22",
+      "interface": "auto",
+      "scheduler_host": "cpui01"
+    },
+    {
+      "host": "cpui02-2",
+      "ip": "10.10.11.23",
+      "interface": "auto",
+      "scheduler_host": "cpui02"
+    },
+    {
+      "host": "cpui03-2",
+      "ip": "10.10.11.24",
+      "interface": "auto",
+      "scheduler_host": "cpui03"
+    },
+    {
+      "host": "cpui04-2",
+      "ip": "10.10.11.25",
+      "interface": "auto",
+      "scheduler_host": "cpui04"
+    },
+    {
+      "host": "cpui05-2",
+      "ip": "10.10.11.26",
+      "interface": "auto",
+      "scheduler_host": "cpui05"
+    },
+    {
+      "host": "cpui06-2",
+      "ip": "10.10.11.27",
+      "interface": "auto",
+      "scheduler_host": "cpui06"
+    },
+    {
+      "host": "cpui07-2",
+      "ip": "10.10.11.28",
+      "interface": "auto",
+      "scheduler_host": "cpui07"
+    },
+    {
+      "host": "cpui08-2",
+      "ip": "10.10.11.29",
+      "interface": "auto",
+      "scheduler_host": "cpui08"
+    },
+    {
+      "host": "cpui09-2",
+      "ip": "10.10.11.30",
+      "interface": "auto",
+      "scheduler_host": "cpui09"
+    },
+    {
+      "host": "cpui10-2",
+      "ip": "10.10.11.31",
+      "interface": "auto",
+      "scheduler_host": "cpui10"
+    },
+    {
+      "host": "cpui11-2",
+      "ip": "10.10.11.32",
+      "interface": "auto",
+      "scheduler_host": "cpui11"
+    },
+    {
+      "host": "cpui12-2",
+      "ip": "10.10.11.33",
+      "interface": "auto",
+      "scheduler_host": "cpui12"
+    },
+    {
+      "host": "cpui13-2",
+      "ip": "10.10.11.34",
+      "interface": "auto",
+      "scheduler_host": "cpui13"
+    },
+    {
+      "host": "cpui14-2",
+      "ip": "10.10.11.35",
+      "interface": "auto",
+      "scheduler_host": "cpui14"
+    },
+    {
+      "host": "cpui15-2",
+      "ip": "10.10.11.36",
+      "interface": "auto",
+      "scheduler_host": "cpui15"
+    },
+    {
+      "host": "cpui16-2",
+      "ip": "10.10.11.37",
+      "interface": "auto",
+      "scheduler_host": "cpui16"
+    }
+  ]
+}

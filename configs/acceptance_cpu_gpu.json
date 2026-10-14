@@ -1,0 +1,19 @@
+{
+  "python": "/share/home/renhj/miniconda3/envs/pytorch_py311/bin/python",
+  "workspace": "/share/home/renhj/attention_cpu",
+  "master_addr": "10.10.11.22",
+  "nodes": [
+    {
+      "host": "cpui01-2",
+      "ip": "10.10.11.22",
+      "interface": "auto",
+      "scheduler_host": "cpui01"
+    },
+    {
+      "host": "gpu03-2",
+      "ip": "10.10.11.18",
+      "interface": "auto",
+      "scheduler_host": "gpu03"
+    }
+  ]
+}

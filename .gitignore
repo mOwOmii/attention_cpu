@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+runs/
+
+# Local agent metadata and credentials
+.agents/
+.codex/
+.aws/
+.env
+.env.*
+!.env.example
+*.pem
+*.key

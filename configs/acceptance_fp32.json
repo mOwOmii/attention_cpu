@@ -1,0 +1,14 @@
+{
+  "embed_dim": 128,
+  "num_heads": 32,
+  "dropout": 0.0,
+  "causal": true,
+  "bias": true,
+  "rope": true,
+  "rope_base": 10000.0,
+  "rotary_dim": null,
+  "scale": null,
+  "dtype": "float32",
+  "softmax_dtype": null,
+  "input_layout": "BSE"
+}
