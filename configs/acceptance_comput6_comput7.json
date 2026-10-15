@@ -1,0 +1,9 @@
+{
+  "python": "/data1/code_home/wangtd/miniconda3/envs/cpu_tp/bin/python",
+  "workspace": "/data1/code_home/wangtd/attention_cpu",
+  "master_addr": "10.10.10.6",
+  "nodes": [
+    {"host": "comput6", "interface": "enp25s0f0"},
+    {"host": "comput7", "interface": "enp25s0f0"}
+  ]
+}

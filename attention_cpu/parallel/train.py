@@ -11,6 +11,7 @@ from torch.nn.parallel import DistributedDataParallel
 
 from ..analyze import write_json
 from ..capture import CaptureConfig, CaptureWriter
+from ..seed import SEED_FILENAME, save_initial_seed
 from .attention import TensorParallelSelfAttention
 from .checkpoint import gather_full_state_dict, restore_parallel_checkpoint, save_parallel_checkpoint
 
@@ -47,7 +48,7 @@ def normalized_loss(prediction, target, valid, *, global_count, dp_size):
 
 def train_parallel(config, context, *, steps=20, batch_size=4, seq_len=16, seed=7, lr=0.01,
                    output="runs/parallel", resume=None, threads=1, grad_accum_steps=1,
-                   variable_lengths=False, capture=None):
+                   variable_lengths=False, capture=None, seed_source="fixed"):
     for name, value in (("steps",steps),("batch_size",batch_size),("seq_len",seq_len),
                         ("threads",threads),("grad_accum_steps",grad_accum_steps)):
         if type(value) is not int or value <= 0:
@@ -56,9 +57,6 @@ def train_parallel(config, context, *, steps=20, batch_size=4, seq_len=16, seed=
         raise ValueError("lr must be finite and positive")
     if batch_size < context.dp_size * grad_accum_steps:
         raise ValueError("global batch_size must be >= dp_size * grad_accum_steps")
-    torch.set_num_threads(threads)
-    torch.manual_seed(seed)
-    model = TensorParallelSelfAttention(config, context)
     train_config = {"batch_size":batch_size, "seq_len":seq_len, "seed":seed, "lr":lr, "threads":threads,
                     "grad_accum_steps":grad_accum_steps, "variable_lengths":variable_lengths,
                     "optimizer":"AdamW", "weight_decay":0.0, "task":"global fixed batch masked mean regression"}
@@ -67,6 +65,15 @@ def train_parallel(config, context, *, steps=20, batch_size=4, seq_len=16, seed=
         dist.all_gather_object(signatures, (config.to_dict(),train_config,str(output),str(resume)))
         if any(s != signatures[0] for s in signatures):
             raise ValueError("all ranks must agree on training configuration and shared output/resume paths")
+    seed_path = Path(output) / SEED_FILENAME
+    if not resume:
+        if context.rank == 0:
+            save_initial_seed(output, seed, config, source=seed_source)
+        if dist.is_initialized():
+            dist.barrier()
+    torch.set_num_threads(threads)
+    torch.manual_seed(seed)
+    model = TensorParallelSelfAttention(config, context)
     executor = (DistributedDataParallel(model, device_ids=None, process_group=context.dp_group,
                                        broadcast_buffers=False) if context.dp_size > 1 else model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.0)
@@ -74,6 +81,11 @@ def train_parallel(config, context, *, steps=20, batch_size=4, seq_len=16, seed=
                      if resume else (0,[]))
     if steps <= start:
         raise ValueError("steps must exceed the restored optimizer step")
+    if resume:
+        if context.rank == 0:
+            save_initial_seed(output, seed, config, source=seed_source)
+        if dist.is_initialized():
+            dist.barrier()
     x, target, valid = make_training_batch(config,batch_size,seq_len,seed,variable_lengths)
     begin, end = batch_range(batch_size, context.dp_size, context.dp_rank)
     count = valid.sum().item() * config.embed_dim
@@ -128,7 +140,7 @@ def train_parallel(config, context, *, steps=20, batch_size=4, seq_len=16, seed=
     report = {**context.metadata(),"device":"cpu","steps":steps,"resumed_from_step":start,
               "model_config":config.to_dict(),"train_config":train_config,"losses":losses,
               "initial_training_loss":losses[0],"final_training_loss":losses[-1],"evaluation_loss":evaluation,
-              "checkpoint":str(checkpoint),"captured_records":captured,
+              "checkpoint":str(checkpoint),"initial_seed_file":str(seed_path),"captured_records":captured,
               "capture":{**asdict(capture),"root":str(capture.root)}}
     write_json(root/f"training_report_rank_{context.rank}.json",report)
     if context.rank == 0:

@@ -169,7 +169,7 @@ def summarize(root):
     state=('FAIL' if errors else 'LOCAL_ONLY' if manifest['local_smoke'] else 'PROBE_PASS' if manifest['probe'] else 'PASS')
     result=dict(suite=suite,status=state,world_size=world,errors=errors,performance=performance,
                 actual_multi_node_passed=state=='PASS' and manifest['expected_nodes']>1,
-                scope='maximum observed, not proven physical maximum' if suite=='max-parallel' else 'two four-rank topologies')
+                scope='maximum observed, not proven physical maximum' if suite=='max-parallel' else 'two topologies per process level')
     atomic_json(root/'acceptance.json',result)
     atomic_json(root/'performance.json',performance)
     atomic_json(root/'numerical_report.json', {str(r['rank']):r.get('numerical',[]) for r in rows})

@@ -46,10 +46,11 @@ def main():
         raise ValueError('maximum parallel suite requires one compute thread per worker')
     if args.probe_only and args.suite != 'max-parallel':
         raise ValueError('--probe-only belongs to max-parallel')
-    topologies = ([(1,1)] if args.local_smoke else [(4,1),(2,2)] if args.suite == 'correctness-performance'
-                  else [(32,world//32)])
-    if not args.local_smoke and (world != 4 if args.suite == 'correctness-performance' else world < 32 or world % 32):
-        raise ValueError('correctness-performance requires W=4; max-parallel requires W divisible by 32')
+    topologies = ([(1,1)] if args.local_smoke else [(world,1),(world//2,2)]
+                  if args.suite == 'correctness-performance' else [(32,world//32)])
+    if not args.local_smoke and (world not in (2,4,8,16,32) if args.suite == 'correctness-performance'
+                                 else world < 32 or world % 32):
+        raise ValueError('correctness-performance requires W in {2,4,8,16,32}; max-parallel requires W divisible by 32')
     root.mkdir(parents=True,exist_ok=True)
     report = dict(rank=rank, suite=args.suite, numerical=[], benchmarks=[], status='FAIL')
     try:

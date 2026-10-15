@@ -87,6 +87,7 @@ def main():
     p.add_argument('--execute',action='store_true')
     p.add_argument('--transport',choices=['ssh','jexec'],default='ssh')
     p.add_argument('--ssh-config',help='optional SSH config path; /dev/null skips broken system config')
+    p.add_argument('--ssh-known-hosts',help='known_hosts file for strict SSH host-key verification')
     p.add_argument('--capacity-search',action='store_true',help='halving short probes, then formal run at highest observed success')
     p.add_argument('--probe-only',action='store_true')
     args=p.parse_args()
@@ -96,11 +97,11 @@ def main():
         if not os.environ.get('JH_JOBID'):
             raise ValueError('jexec transport requires an active jsub allocation')
     workers=args.workers_per_node or (2 if args.suite=='correctness-performance' else 96)
-    args.threads=args.threads or (44 if args.suite=='correctness-performance' else 1)
+    args.threads=args.threads or 1
     if workers<=0 or args.threads<=0 or not 1<=args.port<=65535:
         raise ValueError('invalid workers/threads/port')
-    if args.suite=='correctness-performance' and (workers!=2 or args.capacity_search or args.probe_only):
-        raise ValueError('first suite uses two workers per node, no capacity probes')
+    if args.suite=='correctness-performance' and (workers not in (1,2,4,8,16) or args.capacity_search or args.probe_only):
+        raise ValueError('first suite uses 1, 2, 4, 8, or 16 workers per node, no capacity probes')
     if args.suite=='max-parallel' and (workers%2 or workers>96 or args.threads!=1):
         raise ValueError('maximum suite uses even P<=96 and threads=1')
     if args.transport=='jexec':
@@ -166,6 +167,8 @@ def main():
                 commands.append([jexec,'-t',str(args.job_timeout+120),'-m',scheduler_name(node),'/bin/bash','-c',guarded])
             else:
                 commands.append(['ssh']+(['-F',args.ssh_config] if args.ssh_config else [])
+                                +(['-o','StrictHostKeyChecking=yes','-o',f'UserKnownHostsFile={args.ssh_known_hosts}']
+                                  if args.ssh_known_hosts else [])
                                 +['-o','BatchMode=yes','-o','ConnectTimeout=15',node.get('ip',node['host']),shell])
         if not args.execute:
             for cmd in commands:

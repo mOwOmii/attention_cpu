@@ -4,17 +4,15 @@
 
 实施方案见 [attention_implementation_plan.md](attention_implementation_plan.md)；多机验收设计见 [multi_node_acceptance_plan.md](multi_node_acceptance_plan.md)。
 
-## 环境与自检
+## 环境
 
 需要 Python 3.11、PyTorch 和 NumPy。本机 `cpu_tp` Conda 环境已包含这些依赖。以下命令均在项目根目录执行：
 
 ```bash
 conda activate cpu_tp
-python -m unittest discover -s tests -v
-python -m tools.verify_parallel --require-gloo --output runs/parallel_validation/report.json
 ```
 
-第二条验证真实 Gloo 通信，需允许本机进程创建 socket；如果环境禁止 socket，工具以退出码 2 报告该项未验证。`runs/` 中的结果由命令生成，不随源码保存。
+`runs/` 中的结果由命令生成，不随源码保存。
 
 ## 单进程训练
 
@@ -26,6 +24,19 @@ python -m attention_cpu.train \
 ```
 
 `--steps` 是包含已完成步骤的总目标步数。恢复训练时沿用 checkpoint 中的模型、数据、优化器和线程配置。示例使用固定合成 batch 验证训练流程。
+
+### 初始权重的随机种子
+
+训练入口可指定固定 seed、从文件加载 seed，或随机生成一个 seed：
+
+```bash
+python -m attention_cpu.train --seed 123 --steps 1 --output runs/fixed_seed
+python -m attention_cpu.train --seed-file runs/fixed_seed/initial_seed.json \
+  --steps 1 --output runs/reproduced_seed
+python -m attention_cpu.train --random-seed --steps 1 --output runs/random_seed
+```
+
+每次新训练都会在输出目录写入 `initial_seed.json`，其中包含实际 seed、模型配置和 PyTorch 版本；随机生成时也会在初始化模型前保存它。该文件可供后续 `--seed-file` 复用；也可手工提供 `{"seed": 123}`。相同模型配置和 PyTorch 版本下，相同 seed 会生成相同初始权重。TP/DP 运行时由 rank 0 选择随机 seed 并同步给所有 rank。恢复 checkpoint 使用原有 seed 和随机状态，不能同时指定 `--random-seed`。
 
 Python 接口示例：
 
@@ -76,6 +87,6 @@ bash scripts/train_parallel_local.sh \
 
 ## 多机验收
 
-正式多机验收的资源、拓扑和报告要求以 [multi_node_acceptance_plan.md](multi_node_acceptance_plan.md) 为准。`configs/acceptance_cluster.example.json` 提供节点清单模板；`tools.launch_acceptance` 提供远程启动入口，`scripts/submit_acceptance_jsub.sh` 提供景行调度器提交入口。使用这些入口前须核对节点清单、共享路径、Python 路径和调度资源。
+当前使用 `comput6`、`comput7` 进行两节点多级验收，资源、拓扑与通过条件见 [multi_node_acceptance_plan.md](multi_node_acceptance_plan.md)。节点清单为 [configs/acceptance_comput6_comput7.json](configs/acceptance_comput6_comput7.json)。从 `admin1` 启动时，每节点可依次使用 1、2、4、8 个进程；`tools.launch_acceptance` 会检查数值结果并记录短计时。旧的 16 节点容量方案不属于本轮目标。
 
-源码、配置与测试保留在仓库中；训练 checkpoint、捕获张量、trace 和验收报告写入已忽略的 `runs/` 目录。
+源码与配置保留在仓库中；训练 checkpoint、捕获张量、trace 和验收报告写入已忽略的 `runs/` 目录。

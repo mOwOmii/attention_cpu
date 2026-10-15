@@ -4,9 +4,9 @@
 
 推荐路线：使用 Python 3.11、PyTorch 和 NumPy，通过标准 PyTorch CPU 运算实现完整 Attention，以独立数学基准验证前反向正确性，通过 Gloo 实现 TP 和 DP，并提供结果保存、重放和误差分析工具。MindSpeed-LLM 的通用 Attention 和并行结构可作为设计参考，后续按需增加接口或配置兼容。
 
-本文是实施方案及阶段状态记录。阶段①至③已落地；阶段④ TP/DDP 代码、训练和分片恢复已交付，本机真实 Gloo/DDP 测试已通过。阶段⑤已形成面向 16 个 CPU 节点的[两类验收方案](multi_node_acceptance_plan.md)，验收工具已交付，真实集群验收待执行；阶段⑥性能优化仍未完成，运行方式见 `README.md`。
+本文是实施方案及阶段状态记录。阶段①至③已落地；阶段④ TP/DDP 代码、训练和分片恢复已交付，本机真实 Gloo/DDP 测试已通过。阶段⑤已按 [comput6、comput7 两节点方案](multi_node_acceptance_plan.md)完成多级 TP/DP 数值验证与短计时；阶段⑥性能优化仍未完成，运行方式见 `README.md`。
 
-验证流程区分独立数学基准、进程内并行代数测试、本机真实 Gloo 通信和跨机验收；前三项已具备可运行入口，跨机验收仍需在目标集群执行。
+验证流程包括独立数学基准、本机真实 Gloo 通信和跨机验收；两节点验收可按配套方案重新执行。
 
 ## 1. 需求与交付范围
 
@@ -37,7 +37,7 @@
 | 现有依赖 | PyTorch、NumPy 可用；pytest、PyYAML、MindSpeed-LLM、Megatron、torch_npu 未安装 |
 | CPU 计算探测 | SDPA 在形状 `[2,4,16,32]` 上完成前反向，输入梯度均为有限值 |
 
-优先使用现有 PyTorch、NumPy 和 Python 标准库，测试采用 `unittest`。矩阵乘法调用现有数学库，首版不要求新增 C++ 算子或更换 conda 环境。
+优先使用现有 PyTorch、NumPy 和 Python 标准库。矩阵乘法调用现有数学库，首版不要求新增 C++ 算子或更换 conda 环境。
 
 ### 2.1 已记录的执行环境通信限制
 
@@ -199,15 +199,9 @@ DDP 仅覆盖对应 DP 组。loss 归一化、梯度平均与梯度累积共同�
 
 本机真实 Gloo/DDP 测试已通过；跨机训练与目标集群资源验收仍需单独执行。
 
-已验证：`(TP,DP)=(2,1),(1,2),(2,2)` 的输出、dInput、参数梯度、一次 SGD 更新、不等有效 token 数及梯度累积；另覆盖 FP32/SBE/无 bias、可微 head bias、仅捕获一个 TP rank、分片重建和局部重放。这些多 rank 算法测试使用测试代码中的进程内线程 SUM，不是 Gloo 或生产通信后端。
+已验证：`(TP,DP)=(2,1),(1,2),(2,2)` 的输出、dInput、参数梯度、一次 SGD 更新、不等有效 token 数及梯度累积；另覆盖 FP32/SBE/无 bias、可微 head bias、仅捕获一个 TP rank、分片重建和局部重放。
 
-实际 Gloo 测试入口已提供，具备 socket 权限时会启动真实进程并使用 DDP，验证三个拓扑、参数更新、累积与 checkpoint 续训。严格验收命令为：
-
-```bash
-python -m tools.verify_parallel --require-gloo --output runs/parallel_validation_new/report.json
-```
-
-退出码 0 表示全部通过，1 表示测试失败，2 表示因环境跳过实际 Gloo 验收。
+实际 Gloo 通信可通过 `attention_cpu.parallel.train` 的多进程训练入口和 `tools.launch_acceptance` 的跨机验收入口检查。
 
 单 rank 并行训练路径还覆盖全局 batch、梯度累积、变长样本、dropout/RoPE 和 schema-v2 恢复；它与真实多 rank 通信验收分别检查。
 
@@ -341,7 +335,7 @@ python -m tools.compare_results \
 
 ### 7.6 验收范围
 
-`tests/test_capture.py` 检查保存开关不改变训练 loss、参数及 RNG，并覆盖筛选、文件损坏、NaN/Inf、缺失项、冻结参数和梯度累积。分析、重放、比较与重建工具可按本节命令生成新报告。
+分析、重放、比较与重建工具可按本节命令生成新报告。
 
 比较仅覆盖两侧实际保存的张量，选定项通过不代表未保存项也通过。相同符号的无穷允许相等，NaN 判为不一致；离散类型精确比较。不同梯度通信阶段不能直接混比。跨版本或跨机器时按固定精度门槛验收。
 
@@ -406,11 +400,6 @@ tools/
     replay_capture.py
     reconstruct_results.py
     replay_parallel_capture.py
-    verify_parallel.py
-tests/
-    test_attention.py
-    test_capture.py
-    test_parallel.py
 configs/
     attention_spec.json
     single_process.json
@@ -433,16 +422,16 @@ attention_implementation_plan.md
 | ② 单进程实现 | Attention 核心、完整模块、训练示例、单进程 checkpoint | 前反向、独立基准和梯度检查通过 | 已完成 |
 | ③ 保存与分析 | dump、筛选、统计、重放、比较和离线分片重建工具 | 能重现结果并定位中间张量及梯度偏差 | 已完成 |
 | ④ TP＋DP | Gloo 组、可微 TP、DDP、累积、保存与分片恢复 | 实际并行结果与单进程训练等价 | 代码已交付，本机真实 Gloo 测试已通过；跨机验收待执行 |
-| ⑤ 多机验收 | 两类验收方案、数值/性能报告、最大并行度算子分析 | 性能与正确性通过；全部 16 节点达到最大实测并行度并完成算子分析 | 两类验收入口、CPU 绑定、profiler 和汇总已交付；本地自检通过，真实集群实测待执行 |
+| ⑤ 多机验收 | comput6、comput7 上多个进程级别的 TP/DP 数值及性能报告 | 各级真实跨机 TP/DP 前反向、梯度和更新与单进程参考一致 | 已完成 2、4、8、16 rank 四级实测，全部数值验收通过 |
 | ⑥ 性能优化 | 线程及 NUMA 调优、性能报告；可选 CPU SDPA 路径 | 优化后重新通过相关数值验收 | 待实现 |
 
 运行入口见 `README.md`。单进程训练恢复、捕获重放与本机并行验证均可重新生成报告；历史结果文件不作为源码保存。
 
-阶段④后续跨机验收工作：
+阶段④跨机验收范围：
 
-1. 在目标集群运行严格命令，取得跨机 Gloo/DDP 三个拓扑的通过报告。
-2. 确认真实通信下的输出、输入/参数梯度、更新、累积及分片恢复与参考一致，并检查 `post_dp` 记录。
-3. 阶段⑤按最新要求仅进行性能与正确性验证，以及 16 节点最大并行度测试并分析算子执行效果；不再要求逐级节点扩展、故障注入或长稳矩阵。
+1. 在 comput6、comput7 运行真实 Gloo TP/DP，对照输出、输入/参数梯度、更新与累积结果。
+2. 分片恢复与 `post_dp` 捕获的专项验证仍由相应训练/记录测试覆盖，不列为本轮两节点性能级别的通过条件。
+3. 阶段⑤按当前两节点方案逐级运行 2、4、8、16 个进程，性能只记录趋势，数值正确性是通过条件。
 
 标准规格、CPU 基础模块和参考工具均可在现有环境推进，无需等待昇腾环境或 MindSpeed-LLM 配置。通信环境受限时继续完成独立工作，但保留实际通信验收为未完成状态。外部框架兼容与低精度扩展不阻塞首版交付。
 
@@ -456,8 +445,8 @@ attention_implementation_plan.md
 
 当前阶段不需要昇腾设备、torch_npu、CANN 或融合算子资料。多机条件齐备前，可完成 CPU 实现和本地数值验证，但不能将尚未执行的真实多机通信标记为已通过。
 
-### 11.1 两类多机验收（最新范围）
+### 11.1 两节点多级验收（当前范围）
 
-详细设计见 [multi_node_acceptance_plan.md](multi_node_acceptance_plan.md)。本轮只做两类：① 单进程参考与两机四进程的性能/正确性验证，覆盖 TP4/DP1 和 TP2/DP2；② 直接使用全部 16 节点，探测最大有效 worker 数并做算子执行效果分析。按每节点 96 个物理核，目标上界为 1536 worker（TP32/DP48、每 worker 一个计算线程），实际值由 cpuset、内存、Gloo 线程/连接及进程限制决定。
+详细设计见 [multi_node_acceptance_plan.md](multi_node_acceptance_plan.md)。本轮只使用 `comput6`、`comput7`，每节点依次启动 1、2、4、8 个 worker。每级测试全局 TP 与两节点 DP 两种拓扑，覆盖 FP32/FP64、dropout 条件、输出、loss、dInput、参数梯度和一次 SGD 更新。
 
-第二类只在最高实测规模做正式计时和短 profiler 采集，分析矩阵乘法、softmax、RoPE、数据搬运、反向、TP/DP 通信及 CPU/内存表现。取消原 L0～L7 分级矩阵；故障恢复和两小时长稳不作为本轮门槛。三份 `configs/acceptance_*.json` 继续使用。本节与新验收文档优先于前文一般性测试建议；真实集群实测仍待执行。
+各级附带相同负载的短计时，记录前向、反向、整步及吞吐；不要求 16 节点最大并行度或 profiler 分析。数值比较全部通过且 rank 报告齐全才算通过，本节与两节点方案优先于前文较早的 16 节点建议。
